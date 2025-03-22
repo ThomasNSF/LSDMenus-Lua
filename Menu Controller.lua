@@ -890,9 +890,11 @@ function menu_process(user_id, btn_text)
         -- It retrieves the target submenu name from btn_def.menu and sends a message to load that submenu.
         -- The handler returns "HID" to indicate that the current menu should be hidden.
         SUB = function (menu_def, btn_def)
-            local var_override = btn_def.var
-            -- TODO: pass variable override if needed.
-            ll.MessageLinked(LINK_THIS, CONST.LNK_PUSHMENU, btn_def.menu, user_id)
+            local sub_menu = btn_def.menu
+            if btn_def.var then
+                sub_menu = sub_menu .. ":" .. btn_def.var
+            end
+            ll.MessageLinked(LINK_THIS, CONST.LNK_PUSHMENU, sub_menu, user_id)
             return "HID"
         end,
         
