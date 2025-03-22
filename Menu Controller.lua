@@ -4,6 +4,7 @@
     - Author: Thomas Pallis 
     - Based (distantly) and inspired by Nargus Asturias' SIMPLE DIALOG MODULE
     - License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+    - Repository: git@github.com:ThomasNSF/LSDMenus-Lua.git
     ---------------------------------------------
     
     1. MENU ROOT OBJECT
@@ -217,9 +218,6 @@
     1. Keep "label" under 24 characters (Second Life dialog limit).
     2. Reuse variables via the "var" field at the menu level.
 
-    VERSION
-    ==============================================
-    LSD Menu System v1.0.0.1
 ]]
 
 ---------------------------------------------------------------------
@@ -259,7 +257,8 @@ local ACTIVE_CHANNELS = {}
 ---------------------------------------------------------------------
 local function toboolean(value)
     if type(value) == "string" then
-        if tonumber(value) then return true
+        if value == "" then return false
+        elseif tonumber(value) then return true
         elseif value == "0" then return false end
         local lower = value:lower()
         if lower == "true" then return true
@@ -464,12 +463,12 @@ JSON.decode = function(str)
         while true do
             skip_whitespace()
             if str:sub(pos, pos) ~= '"' then
-                ll.Say(0x7FFFFFFF, "Expected string for key at position " .. pos)
+                debug("Expected string for key at position " .. pos)
             end
             local key = parse_string()
             skip_whitespace()
             if str:sub(pos, pos) ~= ":" then
-                ll.Say(0x7FFFFFFF, "Expected ':' after key at position " .. pos)
+                debug("Expected ':' after key at position " .. pos)
             end
             pos = pos + 1  -- skip ':'
             skip_whitespace()
