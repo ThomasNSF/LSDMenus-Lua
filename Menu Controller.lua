@@ -969,8 +969,12 @@ function menu_process(user_id, btn_text)
                 variable = MENU_STACK.variable 
             else 
                 variable = btn_def.var or menu_def.var 
-            end            
-            ll.LinksetDataWrite(variable, tostring(btn_def.val))
+            end           
+            if btn_def.val ~= nil then
+                ll.LinksetDataWrite(variable, tostring(btn_def.val))
+            else 
+                ll.LinksetDataDelete(variable)
+            end
             return btn_def.post or menu_def.post or "RSH"
         end,
         
@@ -985,7 +989,11 @@ function menu_process(user_id, btn_text)
             else 
                 variable = btn_def.var or menu_def.var 
             end
-            ll.LinksetDataWrite(variable, tostring(btn_def.val))
+            if btn_def.val ~= nil then
+                ll.LinksetDataWrite(variable, tostring(btn_def.val))
+            else 
+                ll.LinksetDataDelete(variable)
+            end
             return btn_def.post or menu_def.post or "RSH"
         end,
         
