@@ -283,241 +283,6 @@ function trim(s)
 end
 
 ---------------------------------------------------------------------
--- JSON handling
----------------------------------------------------------------------
-local JSON = {}
-JSON.encode = function (val)
-    -- Helper to decide if a table is an array (consecutive positive integer keys)
-    local function is_array(t)
-        local max = 0
-        local count = 0
-        for k, _ in pairs(t) do
-            if type(k) ~= "number" or k <= 0 or math.floor(k) ~= k then
-                return false
-            end
-            if k > max then
-                max = k
-            end
-            count = count + 1
-        end
-        return max == count
-    end
-
-    -- Escapes string characters for safe JSON output
-    local function escape_string(s)
-        s = s:gsub('\\', '\\\\')
-        s = s:gsub('"', '\\"')
-        s = s:gsub('\b', '\\b')
-        s = s:gsub('\f', '\\f')
-        s = s:gsub('\n', '\\n')
-        s = s:gsub('\r', '\\r')
-        s = s:gsub('\t', '\\t')
-        return s
-    end
-
-    -- Recursively encodes values based on type
-    local function encode_val(v)
-        local t = type(v)
-        if t == "nil" then
-            return "null"
-        elseif t == "boolean" then
-            return v and "true" or "false"
-        elseif t == "number" then
-            return tostring(v)
-        elseif t == "string" then
-            return '"' .. escape_string(v) .. '"'
-        elseif t == "table" then
-            local items = {}
-            if is_array(v) then
-                for i = 1, #v do
-                    table.insert(items, encode_val(v[i]))
-                end
-                return "[" .. table.concat(items, ",") .. "]"
-            else
-                for k, v in pairs(v) do
-                    if type(k) ~= "string" then
-                        error("JSON object keys must be strings")
-                    end
-                    table.insert(items, encode_val(k) .. ":" .. encode_val(v))
-                end
-                return "{" .. table.concat(items, ",") .. "}"
-            end
-        else
-            error("Unsupported type: " .. t)
-        end
-    end
-
-    return encode_val(val)
-end
-
-JSON.decode = function(str)
-    local pos = 1
-    local skip_whitespace, parse_array, parse_string, parse_number, parse_object, parse_value
-
-    skip_whitespace = function ()
-        while pos <= #str do
-            local c = str:sub(pos, pos)
-            if c == " " or c == "\t" or c == "\n" or c == "\r" then
-                pos = pos + 1
-            else
-                break
-            end
-        end
-    end
-
-    parse_array = function ()
-        local arr = {}
-        pos = pos + 1  -- skip '['
-        skip_whitespace()
-        if str:sub(pos, pos) == "]" then
-            pos = pos + 1
-            return arr
-        end
-        local index = 1
-        while true do
-            skip_whitespace()
-            arr[index] = parse_value()
-            index = index + 1
-            skip_whitespace()
-            local delimiter = str:sub(pos, pos)
-            if delimiter == "]" then
-                pos = pos + 1
-                break
-            elseif delimiter == "," then
-                pos = pos + 1
-            else
-                error("Expected ',' or ']' at position " .. pos)
-            end
-        end
-        return arr
-    end
-
-    parse_string = function ()
-        pos = pos + 1  -- skip opening quote
-        local start = pos
-        local result = ""
-        while pos <= #str do
-            local c = str:sub(pos, pos)
-            if c == '"' then
-                result = result .. str:sub(start, pos - 1)
-                pos = pos + 1  -- skip closing quote
-                return result
-            elseif c == "\\" then
-                result = result .. str:sub(start, pos - 1)
-                pos = pos + 1
-                local escape = str:sub(pos, pos)
-                if escape == "u" then
-                    local hex = str:sub(pos + 1, pos + 4)
-                    result = result .. utf8.char(tonumber(hex, 16))
-                    pos = pos + 4
-                elseif escape == '"' or escape == "\\" or escape == "/" then
-                    result = result .. escape
-                    pos = pos + 1
-                elseif escape == "b" then
-                    result = result .. "\b"
-                    pos = pos + 1
-                elseif escape == "f" then
-                    result = result .. "\f"
-                    pos = pos + 1
-                elseif escape == "n" then
-                    result = result .. "\n"
-                    pos = pos + 1
-                elseif escape == "r" then
-                    result = result .. "\r"
-                    pos = pos + 1
-                elseif escape == "t" then
-                    result = result .. "\t"
-                    pos = pos + 1
-                else
-                    error("Invalid escape sequence at position " .. pos)
-                end
-                start = pos
-            else
-                pos = pos + 1
-            end
-        end
-        error("Unterminated string starting at position " .. start)
-    end
-
-    parse_number = function ()
-        local start = pos
-        while pos <= #str and str:sub(pos, pos):match("[0-9+%-eE%.]") do
-            pos = pos + 1
-        end
-        local num_str = str:sub(start, pos - 1)
-        local number = tonumber(num_str)
-        if not number then
-            debug("Invalid number: " .. num_str .. " at position " .. start)
-        end
-        return number
-    end
-
-    parse_object = function ()
-        local obj = {}
-        pos = pos + 1  -- skip '{'
-        skip_whitespace()
-        if str:sub(pos, pos) == "}" then
-            pos = pos + 1
-            return obj
-        end
-        while true do
-            skip_whitespace()
-            if str:sub(pos, pos) ~= '"' then
-                debug("Expected string for key at position " .. pos)
-            end
-            local key = parse_string()
-            skip_whitespace()
-            if str:sub(pos, pos) ~= ":" then
-                debug("Expected ':' after key at position " .. pos)
-            end
-            pos = pos + 1  -- skip ':'
-            skip_whitespace()
-            local value = parse_value()
-            obj[key] = value
-            skip_whitespace()
-            local delimiter = str:sub(pos, pos)
-            if delimiter == "}" then
-                pos = pos + 1
-                break
-            elseif delimiter == "," then
-                pos = pos + 1
-            else
-                debug("Expected ',' or '}' at position " .. pos)
-            end
-        end
-        return obj
-    end
-
-    parse_value = function()
-        skip_whitespace()
-        local c = str:sub(pos, pos)
-        if c == "{" then
-            return parse_object()
-        elseif c == "[" then
-            return parse_array()
-        elseif c == '"' then
-            return parse_string()
-        elseif c == "-" or c:match("%d") then
-            return parse_number()
-        elseif str:sub(pos, pos+3) == "true" then
-            pos = pos + 4
-            return true
-        elseif str:sub(pos, pos+4) == "false" then
-            pos = pos + 5
-            return false
-        elseif str:sub(pos, pos+3) == "null" then
-            pos = pos + 4
-            return nil
-        else
-            debug("Unexpected character '" .. c .. "' at position " .. pos)
-            return nil
-        end
-    end
-
-    return parse_value()
-end
-
----------------------------------------------------------------------
 --[[
     Replaces template variables in a string with values from specified sources.
     Supports nested variables and multiple syntax types:
@@ -551,7 +316,7 @@ end
     3. Unterminated variables (e.g., "{unclosed") are preserved literally
 ]]
 function replace_variables(source, current_menu, max_depth)
-    if not source then return "" end
+    if not source then return nil end
     max_depth = max_depth or 5
 
     local DELIMITERS = {
@@ -670,7 +435,7 @@ function show_active_menu(user_id)
             1. ordered_labels: Array of button labels with navigation first
             2. label_to_index: Map of labels to button indices/special codes
     ]]
-    function prepare_buttons(current_menu, current_page, buttons_per_page)
+    local function prepare_buttons(current_menu, current_page, buttons_per_page)
         local ordered_labels = {}
         local label_to_index = {}
         local has_parent = MENU_STACK.parent ~= nil
@@ -696,7 +461,7 @@ function show_active_menu(user_id)
                     if btn.type == "TOG" then
                         is_active = toboolean(current_val)
                     else
-                        is_active = (btn.val == current_val)
+                        is_active = (tostring(btn.val) == current_val)
                     end
                     label = (is_active and "◉ " or "○ ") .. label
                 else
@@ -1189,13 +954,13 @@ function add_validate(menu_def, store)
     end
 
     if menu_def.name then
-        ll.LinksetDataWrite(CONST.MENU_PREFIX..menu_def.name, JSON.encode(menu_def))
+        ll.LinksetDataWrite(CONST.MENU_PREFIX..menu_def.name, lljson.encode(menu_def))
     end
     return true, menu_def.name
 end
 
 function resolve_menu(menu_desc)
-    local success, menu_def = pcall(JSON.decode, menu_desc)
+    local success, menu_def = pcall(lljson.decode, menu_desc)
     local menu_name
     local var_override
 
@@ -1218,7 +983,7 @@ function resolve_menu(menu_desc)
             report_error("Menu not found: " .. menu_name)
             return nil, nil, nil
         end
-        success, menu_def = pcall(JSON.decode, menu_desc)
+        success, menu_def = pcall(lljson.decode, menu_desc)
         if not success or type(menu_def) ~= "table" then
             report_error("Invalid menu definition: " .. menu_name)
             return nil, nil, nil
@@ -1254,7 +1019,7 @@ function link_message(sender_num, num, str, id)
 
     -- LNK_ADDMENU (40010): Store menu definition
     elseif num == CONST.LNK_ADDMENU then
-        local success, menu_def = pcall(JSON.decode, str)
+        local success, menu_def = pcall(lljson.decode, str)
         if not success then
             return
         end
@@ -1279,7 +1044,7 @@ function link_message(sender_num, num, str, id)
 
     -- LNK_ADDREPL (40020): Update replacements
     elseif num == CONST.LNK_ADDREPL then
-        local replacements = JSON.decode(str) or {}
+        local replacements = lljson.decode(str) or {}
         if type(replacements) == "table" then
             for key, value in pairs(replacements) do
                 local clean_key = trim(tostring(key))
@@ -1295,7 +1060,7 @@ function link_message(sender_num, num, str, id)
 
     -- LNK_DELREPL (40021): Remove replacements
     elseif num == CONST.LNK_DELREPL then
-        local keys_to_delete = JSON.decode(str) or {}
+        local keys_to_delete = lljson.decode(str) or {}
         if type(keys_to_delete) == "table" then
             for _, key in ipairs(keys_to_delete) do
                 local clean_key = trim(tostring(key))
